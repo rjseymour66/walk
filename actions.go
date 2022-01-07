@@ -26,3 +26,8 @@ func listFile(path string, out io.Writer) error {
 	_, err := fmt.Fprintln(out, path)
 	return err
 }
+
+func delFile(path string) error {
+	// os.Remove() returns an error that will bubble up and return
+	return os.Remove(path)
+}
