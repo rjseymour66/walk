@@ -1,6 +1,7 @@
 package main
 
 import (
+	"compress/gzip"
 	"fmt"
 	"io"
 	"log"
@@ -38,4 +39,61 @@ func delFile(path string, delLogger *log.Logger) error {
 
 	delLogger.Println(path)
 	return nil
+}
+
+func archiveFile(destDir, root, path string) error {
+	info, err := os.Stat(destDir)
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("%s is not a directory", destDir)
+	}
+
+	// determine the directory of the file to be archived in
+	// relation to the root. filepath.* is cross-platform
+	relDir, err := filepath.Rel(root, filepath.Dir(path))
+	if err != nil {
+		return err
+	}
+
+	// construct the path to the archived file's location
+	dest := fmt.Sprintf("%s.gz", filepath.Base(path))
+	targetPath := filepath.Join(destDir, relDir, dest)
+
+	if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
+		return err
+	}
+
+	// open the target file with r/w perms
+	out, err := os.OpenFile(targetPath, os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	// open the source file
+	in, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	// create new zip writer
+	zw := gzip.NewWriter(out)
+
+	// store the source file name in the compressed file
+	zw.Name = filepath.Base(path)
+
+	// copy the data into the compressed format
+	if _, err := io.Copy(zw, in); err != nil {
+		return err
+	}
+
+	// don't defer .Close() bc we want to return the error
+	if err := zw.Close(); err != nil {
+		return err
+	}
+
+	return out.Close()
 }
