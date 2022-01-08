@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 )
@@ -19,11 +20,16 @@ type config struct {
 	list bool
 	// delete files
 	del bool
+	// log destination writer
+	// accepts a file in main() or a buffer for testing
+	wLog io.Writer
 }
 
 func main() {
 	// Parsing command line flags
 	root := flag.String("root", ".", "Root directory to start")
+	// if no log file is provided, use STDOUT
+	logFile := flag.String("log", "", "Log deletes to this file")
 	// Action options
 	list := flag.Bool("list", false, "List files only")
 	del := flag.Bool("del", false, "Delete files")
@@ -32,11 +38,28 @@ func main() {
 	size := flag.Int64("size", 0, "Minimum file size")
 	flag.Parse()
 
+	var (
+		f   = os.Stdout
+		err error
+	)
+
+	// if a value was provided for the logFile, open it and store in f
+	// no need to test this because it uses std lib funcs that are tested
+	if *logFile != "" {
+		f, err = os.OpenFile(*logFile, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0644)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		defer f.Close()
+	}
+
 	c := config{
 		ext:  *ext,
 		size: *size,
 		list: *list,
 		del:  *del,
+		wLog: f,
 	}
 
 	if err := run(*root, os.Stdout, c); err != nil {
@@ -50,6 +73,8 @@ func main() {
 // out: output destintation. Allows you to print results to STDOUT or to a
 //      bytes.Buffer when testing.
 func run(root string, out io.Writer, cfg config) error {
+	// new logger using wLog, prefix, and std log flags like date and time
+	delLogger := log.New(cfg.wLog, "DELETED FILE: ", log.LstdFlags)
 	return filepath.Walk(root,
 		func(path string, info os.FileInfo, err error) error {
 
@@ -72,7 +97,7 @@ func run(root string, out io.Writer, cfg config) error {
 
 			// Delete files
 			if cfg.del {
-				return delFile(path)
+				return delFile(path, delLogger)
 			}
 
 			// List is the default option if nothing else was set
